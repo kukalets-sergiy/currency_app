@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres
+    restart: "on-failure"
+    volumes:
+      - db:/var/lib/postgresql
+    env_file:
+      - .env
+
+  web:
+    build: .
+    command: >
+      sh -c "scripts/runlocalserver.sh"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    restart: always
+    volumes:
+      - .:/code
+      - ./logs:/code/logs
+
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c "celery -A core worker -l INFO --pool=solo"
+
+    depends_on:
+      - web
+      - redis
+      - db
+    restart: on-failure
+    env_file:
+      - .env
+
+  celery-beat:
+    build: .
+    command: celery -A core beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    depends_on:
+      - redis
+      - db
+    restart: on-failure
+    env_file:
+      - .env
+
+  pg-admin:
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
+      - PGADMIN_LISTEN_PORT=${PGADMIN_LISTEN_PORT}
+    restart: "on-failure"
+    ports:
+      - "8001:5050"
+    depends_on:
+      - db
+
+volumes:
+    db:
